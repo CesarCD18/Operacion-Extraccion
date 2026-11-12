@@ -1,5 +1,6 @@
-
 import * as THREE from 'three';
+import { CollisionWorld } from './CollisionWorld.js';
+import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // ESCENA Y CAMARA
@@ -13,7 +14,7 @@ const camera = new THREE.PerspectiveCamera(
     1000
 );
 
-camera.position.set(-0.71, -1.2, 11.03);
+camera.position.set(-0.71, -1.45, 11.03);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
 
@@ -22,6 +23,7 @@ const renderer = new THREE.WebGLRenderer({
     antialias: true
 });
 
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -33,15 +35,47 @@ sun.position.set(10, 20, 10);
 scene.add(sun);
 
 // CARGADOR DE MODELOS
-const loader = new GLTFLoader();
+const manager = new THREE.LoadingManager();
+manager.onLoad = () => {
+    ready = !!collisionWorld && !!pistola && !!rifle && zombies.length === 6 && ammoBoxes.length > 0;
+    if (ready) {
+        //collisionWorld.snap(camera.position);
+        zombies.forEach(zombie => collisionWorld.snap(zombie.position,0));
+        ammoBoxes.forEach(box => collisionWorld.snap(box.position,0.03));
+        collisionWorld.snap(extraccion.position,0.05);
+        markers.forEach(marker => collisionWorld.snap(marker.position,0.8));
+    }
+    document.getElementById('inicio').disabled = !ready;
+    document.getElementById('carga').textContent = ready ? 'Recursos listos. Sobrevive hasta la extracción.' : 'No se pudo preparar el nivel. Revisa la consola y vuelve a cargar.';
+};
+manager.onProgress = (_, done, total) => { document.getElementById('carga').textContent = `Cargando recursos ${done}/${total}…`; };
+manager.onError = url => { document.getElementById('carga').textContent = `No se pudo cargar: ${url}. Usa Live Server.`; };
+const loader = new GLTFLoader(manager);
 
 // VARIABLES DEL JUEGO
 
 const keys = {};
-const speed = 0.06;
+const speed = 3.6; // unidades por segundo
+let collisionWorld = null;
+let ready = false;
+let elapsed = 0;
+let eliminated = 0;
+let delta = 0;
+const clock = new THREE.Clock();
+const panel = document.getElementById("panel");
+const status = document.getElementById("estado");
+function playing() { return ready && !juegoTerminado && document.pointerLockElement === document.body; }
+function clearKeys() { for (const key in keys) keys[key] = false; }
+document.addEventListener("pointerlockchange", () => {
+    clearKeys();
+    panel.hidden = juegoTerminado || playing();
+});
+window.addEventListener("blur", () => { clearKeys(); if(document.pointerLockElement) document.exitPointerLock(); });
 
 let juegoTerminado = false;
 let recargando = false;
+let recargaRestante = 0;
+let armaRecargando = 1;
 let recogiendoMunicion = false;
 
 // ARMAS
@@ -52,7 +86,7 @@ let armaActual = 1;
 // ZOMBIS
 const zombies = [];
 const distanciaDeteccion = 8;
-const velocidadZombie = 0.010;
+const velocidadZombie = 0.85;
 let etapaActual = 1;
 
 // CAJAS DE MUNICION
@@ -62,12 +96,12 @@ let cajaCercana = null;
 // MUNICION DE CADA ARMA
 const municion = {
     1: {
-        balas: 12,
+        balas: 8,
         capacidad: 12,
         reserva: 0
     },
     2: {
-        balas: 30,
+        balas: 10,
         capacidad: 30,
         reserva: 0
     }
@@ -86,7 +120,7 @@ document.addEventListener('keydown', (event) => {
     const tecla = event.key.toLowerCase();
     keys[tecla] = true;
 
-    if (juegoTerminado) return;
+    if (!playing() || event.repeat) return;
 
     if (tecla === '1') changeWeapon(1);
     if (tecla === '2') changeWeapon(2);
@@ -111,7 +145,7 @@ document.addEventListener('keyup', (event) => {
 // CONTROL DEL MOUSE Y DISPARO
 document.addEventListener('mousedown', (event) => {
 
-    if (juegoTerminado) return;
+    if (juegoTerminado || !ready || event.target.closest('button')) return;
     if (event.button !== 0) return;
 
     if (document.pointerLockElement !== document.body) {
@@ -154,7 +188,7 @@ function updateAmmo() {
 // CAMBIAR ARMA
 function changeWeapon(numero) {
 
-    if (juegoTerminado || recargando) return;
+    if (!playing() || recargando) return;
 
     armaActual = numero;
 
@@ -167,19 +201,21 @@ function changeWeapon(numero) {
 // DISPARAR
 function shoot() {
 
-    if (juegoTerminado || recargando) return;
+    if (!playing() || recargando) return;
 
     const arma = municion[armaActual];
 
     if (arma.balas <= 0) {
-        console.log('Sin balas. Presiona R para recargar.');
+        status.textContent = arma.reserva ? 'Presiona R para recargar.' : 'Sin munición: busca la caja de abastecimiento.';
         return;
     }
 
     arma.balas--;
     updateAmmo();
 
-    console.log('Disparo realizado');
+    status.textContent = '';
+    camera.updateMatrixWorld(true);
+    scene.updateMatrixWorld(true);
 
     // EFECTO VISUAL
     const flash = document.createElement('div');
@@ -198,13 +234,12 @@ function shoot() {
         camera
     );
 
-    // SOLO ZOMBIS VIVOS Y ACTIVOS
+    // ZOMBIS VIVOS: también se puede disparar antes de que detecten al jugador.
     const objetivos = [];
 
     zombies.forEach((zombie) => {
 
-        if (!zombie.userData.vivo ||
-            !zombie.userData.activo) {
+        if (!zombie.userData.vivo) {
             return;
         }
 
@@ -222,16 +257,21 @@ function shoot() {
 
     if (impactos.length === 0) return;
 
+    // El primer muro alcanzado detiene la bala antes del enemigo.
+    const muros = raycaster.intersectObjects(collisionWorld.meshes, false);
+    if (muros.length && muros[0].distance < impactos[0].distance) return;
     const zombie = impactos[0].object.userData.enemigo;
 
     if (!zombie ||
-        !zombie.userData.vivo ||
-        !zombie.userData.activo) {
+        !zombie.userData.vivo) {
         return;
     }
 
     // CADA ZOMBI RESISTE DOS IMPACTOS
     zombie.userData.vida--;
+    document.getElementById('puntero').classList.add('impacto');
+    setTimeout(() => document.getElementById('puntero').classList.remove('impacto'), 130);
+    status.textContent = zombie.userData.vida ? 'Impacto 1/2' : 'Zombi eliminado: 2/2 impactos';
 
     console.log(
         'Impacto. Vida del zombi:',
@@ -244,6 +284,7 @@ function shoot() {
         zombie.userData.activo = false;
 
         scene.remove(zombie);
+        eliminated++;
 
         console.log('Zombi eliminado');
     }
@@ -252,7 +293,7 @@ function shoot() {
 // RECARGAR ARMA
 function reload() {
 
-    if (juegoTerminado || recargando) return;
+    if (!playing() || recargando) return;
 
     const arma = municion[armaActual];
 
@@ -265,28 +306,21 @@ function reload() {
 
     recargando = true;
 
-    const armaRecargando = armaActual;
-
+    armaRecargando = armaActual;
+    recargaRestante = 1.5;
     contador.textContent = 'RECARGANDO...';
+}
 
-    setTimeout(() => {
-
-        if (juegoTerminado) return;
-
-        const datos = municion[armaRecargando];
-
-        const faltantes = datos.capacidad - datos.balas;
-        const cantidad = Math.min(faltantes, datos.reserva);
-
-        datos.balas += cantidad;
-        datos.reserva -= cantidad;
-
-        recargando = false;
-        updateAmmo();
-
-        console.log('Arma recargada');
-
-    }, 1500);
+function updateReload() {
+    if (!recargando) return;
+    recargaRestante -= delta;
+    if (recargaRestante > 0) return;
+    const datos = municion[armaRecargando];
+    const cantidad = Math.min(datos.capacidad-datos.balas, datos.reserva);
+    datos.balas += cantidad;
+    datos.reserva -= cantidad;
+    recargando = false;
+    updateAmmo();
 }
 
 // CARGAR ARMAS
@@ -361,6 +395,8 @@ function loadCity() {
         // CENTRAR MAPA
         ciudad.position.sub(center);
 
+        collisionWorld = new CollisionWorld(ciudad);
+
         // POSICION INICIAL
         camera.position.set(-0.71, -1.2, 11.03);
         camera.rotation.set(0, 0, 0);
@@ -384,7 +420,7 @@ function loadZombies() {
         const posiciones = [
             [-0.7, 7.5, 1],
 
-            [-0.7, -2.5, 2],
+            [0.0, -0.5, 2],
             [1.0, -1.5, 2],
 
             [6.5, 8.0, 3],
@@ -394,13 +430,13 @@ function loadZombies() {
 
         posiciones.forEach((pos) => {
 
-            const zombie = gltf.scene.clone(true);
+            const zombie = clone(gltf.scene);
 
             const box = new THREE.Box3().setFromObject(zombie);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
 
-            const escala = 1.7 / size.y;
+            const escala = 1.05 / size.y;
 
             zombie.scale.setScalar(escala);
 
@@ -420,7 +456,7 @@ function loadZombies() {
             enemigo.userData.activo = false;
             enemigo.userData.etapa = pos[2];
 
-            enemigo.visible = false;
+            enemigo.visible = true;
 
             enemigo.traverse((objeto) => {
                 if (objeto.isMesh) {
@@ -441,42 +477,13 @@ function loadZombies() {
 
 // ACTIVAR ETAPAS DE ZOMBIS
 function activarEtapasZombies() {
-
-    if (juegoTerminado) return;
-
-    const distanciaPunto2 = Math.hypot(
-        camera.position.x - (-0.74),
-        camera.position.z - (-0.42)
-    );
-
-    const distanciaPunto3 = Math.hypot(
-        camera.position.x - 5.48,
-        camera.position.z - (-1.67)
-    );
-
-    if (etapaActual === 1 && distanciaPunto2 < 2) {
-        etapaActual = 2;
-        console.log('Etapa 2: aparecen dos zombis');
+    // Los enemigos existen desde el inicio, pero sólo detectan a través de espacio libre.
+    for (const zombie of zombies) {
+        if (!zombie.userData.vivo) continue;
+        const target = zombie.position.clone(); target.y = camera.position.y;
+        if (camera.position.distanceTo(target) < distanciaDeteccion &&
+            !collisionWorld.occluded(target, camera.position)) zombie.userData.activo = true;
     }
-
-    if (etapaActual === 2 && distanciaPunto3 < 2) {
-        etapaActual = 3;
-        console.log('Etapa 3: aparecen tres zombis');
-    }
-
-    zombies.forEach((zombie) => {
-
-        // NO REACTIVAR ZOMBIS ELIMINADOS
-        if (!zombie.userData.vivo) return;
-
-        if (
-            zombie.userData.etapa <= etapaActual &&
-            !zombie.userData.activo
-        ) {
-            zombie.userData.activo = true;
-            zombie.visible = true;
-        }
-    });
 }
 
 // MOVER ZOMBIS
@@ -486,8 +493,7 @@ function moveZombies() {
 
     zombies.forEach((zombie) => {
 
-        if (!zombie.userData.vivo ||
-            !zombie.userData.activo) {
+        if (!zombie.userData.vivo || !zombie.userData.activo) {
             return;
         }
 
@@ -497,15 +503,18 @@ function moveZombies() {
         const distancia = Math.hypot(dx, dz);
 
         if (
-            distancia < distanciaDeteccion &&
             distancia > 0.6
         ) {
 
-            zombie.position.x +=
-                (dx / distancia) * velocidadZombie;
-
-            zombie.position.z +=
-                (dz / distancia) * velocidadZombie;
+            const previous = zombie.position.clone();
+            collisionWorld.move(zombie.position, dx/distancia*velocidadZombie*delta,
+                dz/distancia*velocidadZombie*delta, 0.22, 0);
+            // Rodear una esquina en vez de atravesar su pared.
+            if (previous.distanceToSquared(zombie.position) < 0.000001) {
+                const side = zombie.userData.etapa % 2 ? 1 : -1;
+                collisionWorld.move(zombie.position, -dz/distancia*side*velocidadZombie*delta,
+                    dx/distancia*side*velocidadZombie*delta, 0.22, 0);
+            }
 
             zombie.lookAt(
                 camera.position.x,
@@ -514,7 +523,8 @@ function moveZombies() {
             );
         }
 
-        if (distancia <= 0.6) {
+        if (distancia <= 0.6 && !collisionWorld.occluded(
+            new THREE.Vector3(zombie.position.x, camera.position.y, zombie.position.z), camera.position)) {
             terminarJuego();
         }
     });
@@ -535,7 +545,7 @@ function loadAmmoBoxes() {
 
         posiciones.forEach((pos) => {
 
-            const caja = gltf.scene.clone(true);
+            const caja = clone(gltf.scene);
 
             const box = new THREE.Box3().setFromObject(caja);
             const size = box.getSize(new THREE.Vector3());
@@ -593,7 +603,8 @@ function checkAmmoPickup() {
             camera.position.z - caja.position.z
         );
 
-        if (distancia < 1.5) {
+        const target = caja.position.clone(); target.y = camera.position.y;
+        if (distancia < 1.5 && !collisionWorld.occluded(camera.position, target)) {
             cajaCercana = caja;
             break;
         }
@@ -619,35 +630,14 @@ function pickupAmmo() {
 
     mensajeMunicion.style.display = 'none';
 
-    // SIMULAR QUE EL JUGADOR SE AGACHA
-    const alturaOriginal = camera.position.y;
-    camera.position.y -= 0.35;
-
-    setTimeout(() => {
-
-        camera.position.y = alturaOriginal;
-
-        if (juegoTerminado) return;
-
-        // MUNICION PARA AMBAS ARMAS
-        municion[1].reserva += 12;
-        municion[2].reserva += 30;
-
-        updateAmmo();
-
-        scene.remove(caja);
-
-        const indice = ammoBoxes.indexOf(caja);
-
-        if (indice !== -1) {
-            ammoBoxes.splice(indice, 1);
-        }
-
-        recogiendoMunicion = false;
-
-        console.log('Municion recogida para ambas armas');
-
-    }, 350);
+    // Una sola recogida, sin teletransportar la cámara ni duplicar reservas.
+    municion[1].reserva += 12;
+    municion[2].reserva += 30;
+    updateAmmo();
+    scene.remove(caja);
+    ammoBoxes.splice(ammoBoxes.indexOf(caja), 1);
+    recogiendoMunicion = false;
+    status.textContent = 'Abastecimiento: +12 pistola / +30 rifle. R para recargar.';
 }
 
 // ZONA DE EXTRACCION
@@ -674,6 +664,17 @@ const extraccion = new THREE.Mesh(
 extraccion.position.set(6.77, -2.6, 9.08);
 scene.add(extraccion);
 
+// Señales visibles en los dos giros del recorrido y en la salida.
+const markers = [[-0.74,-0.42],[5.48,-1.67],[6.77,9.08]].map(([x,z],i) => {
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.10,0.10,1.6,12),
+        new THREE.MeshBasicMaterial({color: i === 2 ? 0x65ffc4 : 0xffcc66, transparent:true, opacity:0.75}));
+    mesh.position.set(x,-1.8,z); scene.add(mesh); mesh.visible = i === 0;
+    return mesh;
+});
+document.getElementById('inicio').addEventListener('click', () => {
+    if(ready && !juegoTerminado) document.body.requestPointerLock();
+});
+
 // VERIFICAR EXTRACCION
 function verificarExtraccion() {
 
@@ -684,7 +685,7 @@ function verificarExtraccion() {
         camera.position.z - extraccion.position.z
     );
 
-    if (distancia < 1.2) {
+    if (distancia < 1.2 && etapaActual === 3) {
         ganarJuego();
     }
 }
@@ -706,31 +707,38 @@ function movePlayer() {
     const right = new THREE.Vector3();
     right.crossVectors(direction, camera.up).normalize();
 
-    if (keys['w']) {
-        camera.position.addScaledVector(direction, speed);
-    }
-
-    if (keys['s']) {
-        camera.position.addScaledVector(direction, -speed);
-    }
-
-    if (keys['a']) {
-        camera.position.addScaledVector(right, -speed);
-    }
-
-    if (keys['d']) {
-        camera.position.addScaledVector(right, speed);
-    }
+    const movement = new THREE.Vector3();
+    movement.addScaledVector(direction, Number(!!keys.w)-Number(!!keys.s));
+    movement.addScaledVector(right, Number(!!keys.d)-Number(!!keys.a));
+    if (movement.lengthSq()) movement.normalize().multiplyScalar(speed * delta);
+    collisionWorld.move(camera.position, movement.x, movement.z,0.18,1.25);
+    // Dos puntos de paso obligatorios evitan terminar por un atajo junto al inicio.
+    if (etapaActual === 1 && Math.hypot(camera.position.x+0.74,camera.position.z+0.42)<2) etapaActual=2;
+    if (etapaActual === 2 && Math.hypot(camera.position.x-5.48,camera.position.z+1.67)<2) etapaActual=3;
 }
 
 // VICTORIA Y DERROTA
 // =====================================
 
 // MOSTRAR MENSAJE FINAL
+
 function mostrarMensaje(texto, tipo) {
 
+    panel.hidden = true;
+    clearKeys();
     mensajeFinal.textContent = texto;
     mensajeFinal.className = tipo;
+
+    const botonReinicio = document.createElement('button');
+
+    botonReinicio.textContent = 'Volver a jugar';
+    botonReinicio.id = 'botonReinicio';
+
+    botonReinicio.addEventListener('click', () => {
+        window.location.reload();
+    });
+
+    mensajeFinal.appendChild(botonReinicio);
 }
 
 // VICTORIA
@@ -747,7 +755,7 @@ function ganarJuego() {
     mensajeMunicion.style.display = 'none';
 
     mostrarMensaje(
-        '¡MISIÓN COMPLETADA!',
+        '¡MISIÓN COMPLETADA! Has llegado a la zona de extracción.',
         'victoria'
     );
 
@@ -783,8 +791,14 @@ function animate() {
 
     requestAnimationFrame(animate);
 
-    if (!juegoTerminado) {
-
+    delta = Math.min(clock.getDelta(), 0.05);
+    if (playing()) {
+        elapsed += delta;
+        updateReload();
+        const objetivo = etapaActual === 1 ? [-0.74,-0.42] : etapaActual === 2 ? [5.48,-1.67] : [6.77,9.08];
+        document.getElementById('mision').textContent = `TRAMO ${etapaActual}/3 · ${etapaActual === 3 ? 'EXTRACCIÓN' : 'PUNTO DE PASO'} · ${Math.hypot(camera.position.x-objetivo[0],camera.position.z-objetivo[1]).toFixed(1)} m`;
+        document.getElementById('resumen').textContent = `${Math.floor(elapsed)} s · ${eliminated}/6 zombis eliminados`;
+        markers.forEach((marker,i) => { marker.visible = i === etapaActual-1; });
         movePlayer();
         checkAmmoPickup();
         verificarExtraccion();
