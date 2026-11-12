@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operación Extracción</title>
+
+    <link rel="stylesheet" href="./src/style.css">
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+
+    <div id="puntero">+</div>
+
+    <div id="contador">PISTOLA | 12 / 0</div>
+
+    <div id="mensajeMunicion">
+        Presiona E para recoger munición
+    </div>
+
+    <div id="mensajeFinal"></div>
+
+    <script type="module" src="./src/main.js"></script>
+
+</body>
+</html>
