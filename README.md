@@ -1,115 +1,226 @@
-# Operación Extracción: Sobrevive al apocalipsis
 
-## 1. Descripción del proyecto
+# OPERACIÓN EXTRACCIÓN
 
-**Operación Extracción** es un videojuego de supervivencia en primera persona (FPS), desarrollado con JavaScript y Three.js.
+## Descripción del proyecto
 
-El jugador se encuentra en una ciudad abandonada e infestada de zombis. Su objetivo es recorrer el escenario, enfrentarse a los enemigos, administrar su munición y llegar con vida a la zona de extracción.
+Operación Extracción es un videojuego de supervivencia en primera persona (FPS), desarrollado con JavaScript y la biblioteca Three.js como parte del curso de Computación Gráfica y Visual.
 
-El videojuego fue desarrollado como parte del curso de Computación Gráfica y Visual.
+El jugador se encuentra en una ciudad abandonada e infestada de zombis. Su objetivo es sobrevivir, administrar la munición disponible y recorrer el escenario hasta llegar a una zona segura de extracción.
 
-## 2. Objetivo del videojuego
+Durante el recorrido deberá enfrentarse a enemigos, recoger recursos y atravesar dos puntos de paso obligatorios antes de alcanzar el destino final.
 
-Sobrevivir a los ataques de los zombis y alcanzar la zona de extracción utilizando las armas y los recursos disponibles.
+## Tecnologías utilizadas
 
-## 3. Características principales
+- HTML5: estructura de la interfaz del videojuego.
+- CSS3: diseño del menú, indicadores y pantallas de resultados.
+- JavaScript: programación de las mecánicas y lógica del juego.
+- Three.js 0.180.0: renderizado y gestión de la escena tridimensional.
+- GLTFLoader: carga de modelos tridimensionales en formato GLB.
+- SkeletonUtils: clonación de modelos de zombis.
+- WebGL: representación gráfica del escenario 3D.
+- Git y GitHub: control de versiones del proyecto.
 
-- Exploración de un escenario urbano en 3D.
-- Cámara en primera persona con movimiento mediante teclado y mouse.
-- Dos armas disponibles: pistola y rifle.
-- Sistema de disparos y recarga de munición.
-- Zombis que detectan y persiguen al jugador.
-- Seis zombis distribuidos en tres etapas de dificultad progresiva.
-- Eliminación de enemigos después de dos impactos.
-- Caja de munición coleccionable que proporciona balas para ambas armas.
-- Zona de extracción para completar la misión.
-- Pantallas de victoria y derrota.
+## Características principales
 
-## 4. Controles
+### Cámara en primera persona
+
+El videojuego utiliza una cámara FPS que permite explorar el escenario desde la perspectiva del jugador.
+
+El mouse controla la orientación de la cámara, mientras que las teclas WASD permiten desplazarse por el entorno.
+
+### Sistema de armas
+
+El jugador dispone de dos armas:
+
+- Pistola.
+- Rifle.
+
+Cada arma tiene su propio cargador y reserva de munición.
+
+El jugador puede cambiar de arma durante la partida, disparar y recargar cuando disponga de munición de reserva.
+
+### Sistema de munición
+
+El videojuego incluye una caja de abastecimiento que permite recuperar munición para ambas armas.
+
+El jugador debe acercarse a la caja y presionar la tecla E para recogerla.
+
+### Enemigos
+
+Los zombis están representados mediante modelos tridimensionales en formato GLB.
+
+Sus principales características son:
+
+- Detección del jugador cuando se encuentra dentro del rango establecido.
+- Persecución mediante desplazamiento hacia la posición del jugador.
+- Movimiento condicionado por las colisiones del escenario.
+- Resistencia de dos impactos antes de ser eliminados.
+- Derrota del jugador cuando un enemigo consigue alcanzarlo.
+
+### Sistema de colisiones
+
+Se implementó un módulo denominado `CollisionWorld.js` para gestionar las colisiones con la geometría del escenario.
+
+El sistema utiliza triángulos obtenidos del modelo 3D de la ciudad y una división espacial en celdas para consultar las superficies cercanas.
+
+Esto permite restringir el desplazamiento del jugador ante paredes y determinados obstáculos.
+
+### Detección de disparos
+
+Se utiliza `THREE.Raycaster` para detectar los impactos realizados desde la cámara del jugador.
+
+El sistema comprueba si el disparo alcanza a un zombi y considera las superficies del escenario que pueden bloquear la trayectoria.
+
+Cada zombi necesita dos impactos para ser eliminado.
+
+### Progresión de la misión
+
+El recorrido se divide en tres tramos:
+
+1. Desplazamiento hacia el primer punto de paso.
+2. Avance hacia el segundo punto de paso.
+3. Llegada a la zona de extracción.
+
+Los puntos de paso están señalizados mediante indicadores visuales.
+
+La zona final de extracción se identifica mediante un marcador verde.
+
+### Victoria y derrota
+
+**Victoria:** el jugador completa los puntos de paso y llega a la zona de extracción.
+
+**Derrota:** un zombi alcanza al jugador.
+
+En ambos casos se muestra una pantalla de resultado. El jugador puede reiniciar la partida.
+
+## Controles
 
 | Tecla | Acción |
-|---|---|
+|-------|--------|
 | W | Avanzar |
 | A | Moverse a la izquierda |
 | S | Retroceder |
 | D | Moverse a la derecha |
-| Mouse | Mover la cámara |
+| Mouse | Controlar la cámara y apuntar |
 | Clic izquierdo | Disparar |
 | 1 | Seleccionar pistola |
 | 2 | Seleccionar rifle |
 | R | Recargar el arma |
 | E | Recoger munición |
-| P | Mostrar coordenadas en consola |
-| Esc | Liberar el cursor |
+| Esc | Liberar el mouse y pausar |
+| P | Mostrar coordenadas del jugador en la consola |
 
-## 5. Tecnologías utilizadas
-
-- **HTML5:** estructura de la aplicación.
-- **CSS3:** estilos de la interfaz.
-- **JavaScript:** lógica y funcionamiento del videojuego.
-- **Three.js:** renderizado y desarrollo del entorno 3D.
-- **GLTFLoader:** carga de modelos tridimensionales en formato GLB.
-- **Visual Studio Code:** entorno de desarrollo.
-- **Live Server:** ejecución del proyecto mediante un servidor local.
-- **Git y GitHub:** control de versiones y publicación del código.
-
-## 6. Estructura del proyecto
+## Estructura del proyecto
 
 ```text
 Operacion_extracion/
+│
 ├── index.html
 ├── README.md
+│
 ├── models/
-│   ├── ammo_box.glb
+│   ├── zombieland.glb
+│   ├── zombie.glb
 │   ├── pistola.glb
 │   ├── rifle.glb
-│   ├── zombie.glb
-│   └── zombieland.glb
+│   └── ammo_box.glb
+│
 └── src/
     ├── main.js
-    └── style.css
+    ├── style.css
+    └── CollisionWorld.js
 ```
 
-## 7. Instrucciones de ejecución
+## Instalación y ejecución
 
-1. Descargar o clonar el repositorio:
+### Requisitos
 
-   ```bash
-   git clone https://github.com/CesarCD18/Operacion-Extraccion.git
-   ```
+- Navegador moderno compatible con WebGL.
+- Visual Studio Code.
+- Extensión Live Server o un servidor HTTP local.
+- Conexión a Internet para cargar Three.js desde el CDN.
+
+### Pasos
+
+1. Clonar el repositorio:
+
+```bash
+git clone https://github.com/CesarCD18/Operacion-Extraccion.git
+```
 
 2. Abrir la carpeta del proyecto en Visual Studio Code.
-3. Instalar la extensión **Live Server**, si todavía no está instalada.
-4. Abrir `index.html`.
-5. Hacer clic derecho y seleccionar **Open with Live Server**.
-6. Esperar a que carguen los modelos 3D.
-7. Hacer clic dentro del juego para activar el control del mouse.
 
-**Nota:** se necesita conexión a Internet para cargar Three.js desde el CDN configurado en `index.html`. No es necesario instalar Node.js ni ejecutar `npm install`.
+3. Abrir `index.html` mediante Live Server.
 
-## 8. Mecánica del juego
+4. Esperar a que se carguen los modelos tridimensionales.
 
-El jugador comienza en un punto determinado de la ciudad y debe avanzar hacia la zona de extracción.
+5. Presionar el botón **Entrar / Continuar** para comenzar la partida.
 
-Durante el recorrido aparecen zombis distribuidos en tres etapas. Los enemigos detectan al jugador cuando se encuentra dentro de su radio de detección y comienzan a perseguirlo.
+No se recomienda abrir el archivo HTML directamente mediante `file://`, ya que la carga de módulos y modelos puede presentar restricciones del navegador.
 
-El jugador puede utilizar una pistola o un rifle. Cada arma tiene su propia capacidad de munición y necesita dos impactos para eliminar a un zombi.
+## Organización del código
 
-También existe una caja de munición que puede recogerse presionando la tecla `E`. Esta proporciona munición de reserva para ambas armas.
+### main.js
 
-La partida termina de dos maneras:
+Contiene la lógica principal del videojuego:
 
-- **Victoria:** cuando el jugador alcanza la zona de extracción.
-- **Derrota:** cuando un zombi alcanza al jugador.
+- Inicialización de la escena y la cámara.
+- Configuración de iluminación.
+- Carga de modelos GLB.
+- Movimiento del jugador.
+- Sistema de armas y disparos.
+- Gestión de munición.
+- Comportamiento de los zombis.
+- Control de los puntos de paso.
+- Verificación de victoria y derrota.
+- Bucle principal de animación.
 
-## 9. Repositorio
+### CollisionWorld.js
 
-Código fuente disponible en:
+Gestiona las consultas de colisión con el escenario tridimensional.
+
+Entre sus responsabilidades se encuentran:
+
+- Procesamiento de triángulos del modelo de la ciudad.
+- Organización espacial mediante celdas.
+- Consulta de superficies del terreno.
+- Detección de obstáculos.
+- Restricción del movimiento.
+- Comprobación de obstáculos entre dos posiciones.
+
+### style.css
+
+Define los estilos de la interfaz:
+
+- Menú principal.
+- Contador de munición.
+- Indicadores de misión.
+- Mensajes de interacción.
+- Efectos visuales de impacto.
+- Pantallas de victoria y derrota.
+
+## Aspectos técnicos destacados
+
+El proyecto integra diferentes conceptos de computación gráfica:
+
+- Representación de escenas tridimensionales.
+- Transformaciones de posición, rotación y escala.
+- Cámara en perspectiva.
+- Iluminación ambiental y direccional.
+- Importación de modelos GLB.
+- Detección de impactos mediante raycasting.
+- Consultas de colisión basadas en geometría.
+- Interacción en tiempo real.
+- Actualización de objetos mediante un bucle de animación.
+
+## Repositorio
+
+GitHub:
 
 https://github.com/CesarCD18/Operacion-Extraccion
 
-## 10. Estado del proyecto
+## Estado del proyecto
 
-Versión funcional con exploración FPS, sistema de armas, enemigos, munición coleccionable y zona de extracción.
+Proyecto desarrollado como entrega académica de Computación Gráfica y Visual.
 
-El proyecto todavía puede recibir mejoras relacionadas con las colisiones del escenario y la jugabilidad.
+Incluye un escenario tridimensional, cámara FPS, dos armas, sistema de munición, enemigos, colisiones, puntos de paso y condiciones de victoria y derrota.
